@@ -22,6 +22,27 @@ def run_git_command(command, suppress_output=False):
     elif not suppress_output:
         print(result.stdout)
 
+def commit_changes():
+    """Commits changes but does not push if offline."""
+    run_git_command("git add .")
+
+    # Check if there are actual changes before committing
+    commit_result = subprocess.run("git diff --cached --exit-code", cwd=VAULT_PATH, shell=True, capture_output=True)
+    if commit_result.returncode == 0:
+        print("No changes detected. Skipping commit and push.")
+        return
+    
+    run_git_command('git commit -m "Auto-sync: latest updates"', suppress_output=True)
+
+    # Try pushing
+    print("Pushing changes to GitHub...")
+    push_result = subprocess.run("git push origin main", cwd=VAULT_PATH, shell=True, capture_output=True)
+    
+    if push_result.returncode != 0:
+        print("⚠️ Warning: No internet connection. Changes committed locally but not pushed. Will retry on next sync.")
+    else:
+        print("✅ Changes pushed successfully.")
+
 # Step 1: Pull latest changes before opening Obsidian
 print("Pulling latest changes from GitHub...")
 run_git_command("git pull origin main")
@@ -35,15 +56,6 @@ obsidian_process.wait()
 print("Obsidian closed. Checking for changes...")
 
 # Step 3: Commit and push changes after closing Obsidian
-run_git_command("git add .")
-
-# Check if there are actual changes before committing
-commit_result = subprocess.run("git diff --cached --exit-code", cwd=VAULT_PATH, shell=True, capture_output=True)
-if commit_result.returncode == 0:
-    print("No changes detected. Skipping commit and push.")
-else:
-    run_git_command('git commit -m "Auto-sync: latest updates"', suppress_output=True)
-    print("Pushing changes to GitHub...")
-    run_git_command("git push origin main", suppress_output=True)
+commit_changes()
 
 print("Sync Completed!")
