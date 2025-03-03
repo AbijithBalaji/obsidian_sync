@@ -23,7 +23,7 @@ def run_git_command(command, suppress_output=False):
         print(result.stdout)
 
 def commit_changes():
-    """Commits changes locally and ensures offline commits are pushed on next sync."""
+    """Commits changes, pulls latest updates, and prevents conflicts."""
     run_git_command("git add .")
 
     # Check if there are actual changes before committing
@@ -31,11 +31,11 @@ def commit_changes():
     if commit_result.returncode == 0:
         print("No new changes detected.")
 
-        # 🚀 NEW CHECK: If we have unpushed commits, push them now
+        # NEW: Check for unpushed commits before returning
         pending_commits = subprocess.run("git log origin/main..HEAD", cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
         if pending_commits.stdout:
             print("🔄 Detected unpushed commits! Retrying push...")
-            run_git_command("git push origin main")
+            push_changes()
         else:
             print("✅ No unpushed commits. Skipping push.")
         return
@@ -43,12 +43,30 @@ def commit_changes():
     # Commit the new changes
     run_git_command('git commit -m "Auto-sync: latest updates"', suppress_output=True)
 
-    # Try pushing
+    # Try pulling latest changes before pushing
+    print("🔄 Pulling latest changes before pushing...")
+    pull_result = subprocess.run("git pull --rebase origin main", cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
+
+    if pull_result.returncode != 0:
+        print("⚠️ Pull failed! Possible conflict detected.")
+        print("🔧 Resolve manually by running:")
+        print(f"  cd {VAULT_PATH}")
+        print("  git status  # Check which files are in conflict")
+        print("  Fix the conflicts in the files")
+        print("  git add . && git rebase --continue")
+        print("  git push origin main")
+        return
+
+    # If pull is successful, push the changes
+    push_changes()
+
+def push_changes():
+    """Pushes committed changes to GitHub."""
     print("Pushing changes to GitHub...")
     push_result = subprocess.run("git push origin main", cwd=VAULT_PATH, shell=True, capture_output=True)
-    
+
     if push_result.returncode != 0:
-        print("⚠️ Warning: No internet connection. Changes committed locally but not pushed. Will retry on next sync.")
+        print("⚠️ Push failed! Possible conflict detected. Resolve manually as instructed.")
     else:
         print("✅ Changes pushed successfully.")
 
