@@ -1,20 +1,25 @@
 import os
 import subprocess
+import sys
 import time
 
-# Set your Obsidian Vault path
-VAULT_PATH = r"C:\Users\abiji\Personal\Project\Sync Project\obsidian_sync"
+# Detect the OS
+IS_WINDOWS = sys.platform.startswith("win")
 
-# Set the correct path to Obsidian
-OBSIDIAN_PATH = r"C:\Users\abiji\AppData\Local\Programs\Obsidian\Obsidian.exe"  # Update if necessary
+# Set the vault path based on OS
+if IS_WINDOWS:
+    VAULT_PATH = r"C:\Users\abiji\Personal\Project\Sync Project\obsidian_sync"
+    OBSIDIAN_CMD = [r"C:\Users\abiji\AppData\Local\Programs\Obsidian\Obsidian.exe"]  # Update if needed
+else:
+    VAULT_PATH = "/home/pi/obsidian_sync"
+    OBSIDIAN_CMD = ["flatpak", "run", "md.obsidian.Obsidian"]
 
-# Git command executor
-def run_git_command(command):
+def run_git_command(command, suppress_output=False):
     """Executes a git command in the specified vault directory."""
     result = subprocess.run(command, cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
     if result.returncode != 0 and "nothing to commit" not in result.stderr:
         print(f"Error: {result.stderr}")
-    else:
+    elif not suppress_output:
         print(result.stdout)
 
 # Step 1: Pull latest changes before opening Obsidian
@@ -23,20 +28,22 @@ run_git_command("git pull origin main")
 
 # Step 2: Open Obsidian and wait for it to close
 print("Opening Obsidian...")
-obsidian_process = subprocess.Popen(OBSIDIAN_PATH, shell=True)
-obsidian_process.wait()  # Wait until Obsidian is closed before proceeding
+obsidian_process = subprocess.Popen(OBSIDIAN_CMD, shell=IS_WINDOWS)
+
+# Wait for Obsidian to close before proceeding
+obsidian_process.wait()
+print("Obsidian closed. Checking for changes...")
 
 # Step 3: Commit and push changes after closing Obsidian
-print("Checking for changes...")
 run_git_command("git add .")
 
 # Check if there are actual changes before committing
-commit_result = subprocess.run("git diff --cached --exit-code", cwd=VAULT_PATH, shell=True)
+commit_result = subprocess.run("git diff --cached --exit-code", cwd=VAULT_PATH, shell=True, capture_output=True)
 if commit_result.returncode == 0:
     print("No changes detected. Skipping commit and push.")
 else:
-    run_git_command('git commit -m "Auto-sync: latest updates"')
+    run_git_command('git commit -m "Auto-sync: latest updates"', suppress_output=True)
     print("Pushing changes to GitHub...")
-    run_git_command("git push origin main")
+    run_git_command("git push origin main", suppress_output=True)
 
 print("Sync Completed!")
