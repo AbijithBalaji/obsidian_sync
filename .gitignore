@@ -3,3 +3,8 @@
 .obsidian/graph.json
 .obsidian/plugins/
 .obsidian/
+
+
+
+!.obsidian/hotkeys.json
+!.obsidian/snippets.css
