@@ -27,12 +27,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Test Note.md",
+                "file": "test.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Test Note"
+              "title": "test"
             }
           }
         ],
@@ -199,7 +199,7 @@
       "command-palette:Open command palette": false
     }
   },
-  "active": "d7d258c4fded5891",
+  "active": "0d755aa71a34093c",
   "lastOpenFiles": [
     "Test Note.md",
     "work.md",
