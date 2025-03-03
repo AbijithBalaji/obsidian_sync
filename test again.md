@@ -1,1 +1,1 @@
-step 1 chekc 
+step 1 check
