@@ -11,7 +11,7 @@ if IS_WINDOWS:
     VAULT_PATH = r"C:\Users\abiji\Personal\Project\Sync Project\obsidian_sync"
     OBSIDIAN_CMD = [r"C:\Users\abiji\AppData\Local\Programs\Obsidian\Obsidian.exe"]  # Update if needed
 else:
-    VAULT_PATH = "/home/pi/obsidian_sync"
+    VAULT_PATH = "/home/Abijith_PI/obsidian_sync"
     OBSIDIAN_CMD = ["flatpak", "run", "md.obsidian.Obsidian"]
 
 def run_git_command(command, suppress_output=False):
