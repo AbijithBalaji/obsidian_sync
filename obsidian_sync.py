@@ -58,16 +58,19 @@ def sync_process():
 def process_git_commit():
     """Handles committing and pushing changes after Obsidian is closed."""
     update_progress("🔄 Checking for changes...", 70)
-    
-    run_git_command("git add .")
-    staged_files, _ = run_git_command("git diff --cached --name-only")
 
-    if not staged_files.strip():
+    # Run git add . in the background
+    run_git_command("git add .")
+
+    # Instead of checking with git diff, directly commit (faster)
+    commit_output, commit_error = run_git_command('git commit -m "Auto-sync: latest updates"')
+
+    if "nothing to commit" in commit_output.lower():
         update_progress("✅ No new changes detected.", 100)
     else:
         update_progress("📌 Committing changes...", 80)
-        run_git_command('git commit -m "Auto-sync: latest updates"')
 
+        # Check if the branch is ahead before pushing
         ahead_check, _ = run_git_command("git status --porcelain -b")
         if "ahead" in ahead_check:
             update_progress("🚀 Pushing to GitHub...", 90)
@@ -75,8 +78,9 @@ def process_git_commit():
         else:
             update_progress("✅ No new changes to push.", 100)
 
-    # Auto-close window after sync completes
-    root.after(1500, root.destroy)
+    # Auto-close window faster after sync completes
+    root.after(700, root.destroy)  # Reduced delay from 1500ms to 700ms
+
 
 def start_sync_thread():
     """Runs the sync process in a background thread to keep UI responsive."""
