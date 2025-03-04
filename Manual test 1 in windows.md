@@ -1,1 +1,2 @@
-scenario 2 in windows tested
+scenario 2 in windows being tested
+edit mad ein windows 
