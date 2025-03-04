@@ -1,8 +1,9 @@
 import os
 import subprocess
 import sys
+import threading
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk
 
 # Detect OS
 IS_WINDOWS = sys.platform.startswith("win")
@@ -16,72 +17,83 @@ else:
     OBSIDIAN_CMD = ["flatpak", "run", "md.obsidian.Obsidian"]
 
 def run_git_command(command):
-    """Executes a Git command in the specified vault directory."""
+    """Executes a Git command in the specified vault directory and returns output."""
     result = subprocess.run(command, cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
     return result.stdout.strip(), result.stderr.strip()
 
-def show_dialog(title, message):
-    """Displays a messagebox dialog for user notifications."""
-    root = tk.Tk()
-    root.withdraw()
-    messagebox.showinfo(title, message)
-    root.destroy()
+def update_progress(status_text, progress_value):
+    """Updates the progress bar and status message."""
+    progress_label.config(text=status_text)
+    progress_bar["value"] = progress_value
+    root.update_idletasks()
 
-def get_conflicted_files():
-    """Check for Git conflicts and return a list of files."""
-    result, _ = run_git_command("git diff --name-only --diff-filter=U")
-    return result.split("\n") if result else []
+def sync_process():
+    """Handles the full sync process in a separate thread."""
+    update_progress("🔄 Pulling latest changes...", 10)
+    pull_output, pull_error = run_git_command("git pull origin main")
 
-def check_network():
-    """Check if the device has an active internet connection."""
-    result = subprocess.run("ping -c 1 google.com" if not IS_WINDOWS else "ping -n 1 google.com", shell=True, stdout=subprocess.PIPE)
-    return result.returncode == 0
+    if pull_error:
+        update_progress("⚠️ Pull failed! Possible conflict.", 20)
+    elif "Already up to date." in pull_output:
+        update_progress("✅ Already up to date.", 30)
+    else:
+        update_progress("📂 Downloaded new files.", 30)
 
-def commit_changes():
-    """Commits changes and pushes them unless a conflict is detected."""
+    # Open Obsidian
+    update_progress("📂 Opening Obsidian...", 40)
+    obsidian_process = subprocess.Popen(OBSIDIAN_CMD, shell=IS_WINDOWS)
+
+    # Show message while waiting
+    update_progress("🕒 Waiting for Obsidian to close...", 50)
+    
+    def check_obsidian_status():
+        """Periodically checks if Obsidian is still running."""
+        if obsidian_process.poll() is None:
+            root.after(500, check_obsidian_status)  # Re-check after 500ms
+        else:
+            process_git_commit()
+
+    root.after(500, check_obsidian_status)
+
+def process_git_commit():
+    """Handles committing and pushing changes after Obsidian is closed."""
+    update_progress("🔄 Checking for changes...", 70)
+    
     run_git_command("git add .")
-
-    # Force commit if changes are staged
-    print("🔄 Checking for staged changes...")
     staged_files, _ = run_git_command("git diff --cached --name-only")
-    
+
     if not staged_files.strip():
-        print("✅ No new changes detected. Skipping commit.")
+        update_progress("✅ No new changes detected.", 100)
     else:
-        print(f"📌 Staged files found: {staged_files}")
+        update_progress("📌 Committing changes...", 80)
         run_git_command('git commit -m "Auto-sync: latest updates"')
-    
-    # Check if ahead of origin/main
-    ahead_check, _ = run_git_command("git status --porcelain -b")
-    if "ahead" in ahead_check:
-        print("🔄 Local commits detected. Pushing to GitHub...")
-        run_git_command("git push origin main")
-        show_dialog("Sync Successful", "All changes have been committed and pushed.")
-    else:
-        print("✅ No unpushed commits. Skipping push.")
 
-# Step 1: Show a dialog that sync is starting
-show_dialog("Obsidian Sync", "Pulling latest changes from GitHub...")
+        ahead_check, _ = run_git_command("git status --porcelain -b")
+        if "ahead" in ahead_check:
+            update_progress("🚀 Pushing to GitHub...", 90)
+            run_git_command("git push origin main")
+        else:
+            update_progress("✅ No new changes to push.", 100)
 
-# Step 2: Pull latest changes before opening Obsidian
-pull_output, pull_error = run_git_command("git pull origin main")
+    # Auto-close window after sync completes
+    root.after(1500, root.destroy)
 
-# Step 3: Display new files if pulled
-if pull_output:
-    show_dialog("New Updates", f"Downloaded new files:\n{pull_output}")
+def start_sync_thread():
+    """Runs the sync process in a background thread to keep UI responsive."""
+    threading.Thread(target=sync_process, daemon=True).start()
 
-# Step 4: Open Obsidian
-print("Opening Obsidian...")
-obsidian_process = subprocess.Popen(OBSIDIAN_CMD, shell=IS_WINDOWS)
+# Create Progress Window
+root = tk.Tk()
+root.title("Obsidian Sync")
+root.geometry("400x150")
+root.resizable(False, False)
 
-# Wait for Obsidian to close
-obsidian_process.wait()
-print("Obsidian closed. Checking for changes...")
+progress_label = tk.Label(root, text="Starting sync...", font=("Arial", 12))
+progress_label.pack(pady=10)
 
-# Step 5: Show a dialog that sync is happening
-show_dialog("Syncing Changes", "Syncing your latest changes...")
+progress_bar = ttk.Progressbar(root, orient="horizontal", length=300, mode="determinate")
+progress_bar.pack(pady=10)
+progress_bar["maximum"] = 100
 
-# Step 6: Commit and push changes
-commit_changes()
-
-print("Sync Completed!")
+root.after(100, start_sync_thread)
+root.mainloop()
