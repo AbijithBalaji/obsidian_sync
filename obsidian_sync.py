@@ -41,32 +41,24 @@ def commit_changes():
     """Commits changes and pushes them unless a conflict is detected."""
     run_git_command("git add .")
 
-    # Check for changes before committing
-    commit_result, _ = run_git_command("git diff --cached --exit-code")
-    if not commit_result:
-        print("No new changes detected.")
-        return
-
-    # Commit changes
-    run_git_command('git commit -m "Auto-sync: latest updates"')
-
-    # Check internet connection before pushing
-    if check_network():
-        pull_result, pull_error = run_git_command("git pull --rebase origin main")
-
-        if pull_error:
-            print("⚠️ Pull failed! Possible conflict detected.")
-            show_dialog("Sync Conflict Detected", "A conflict has been found. Resolve manually.")
-            return
-
-        # Push changes to GitHub
-        _, push_error = run_git_command("git push origin main")
-        if push_error:
-            show_dialog("Sync Error", "Error pushing changes. Check your internet or resolve conflicts.")
-        else:
-            show_dialog("Sync Successful", "All changes have been committed and pushed.")
+    # Force commit if changes are staged
+    print("🔄 Checking for staged changes...")
+    staged_files, _ = run_git_command("git diff --cached --name-only")
+    
+    if not staged_files.strip():
+        print("✅ No new changes detected. Skipping commit.")
     else:
-        show_dialog("No Network", "No internet detected. Changes committed locally and will sync next time.")
+        print(f"📌 Staged files found: {staged_files}")
+        run_git_command('git commit -m "Auto-sync: latest updates"')
+    
+    # Check if ahead of origin/main
+    ahead_check, _ = run_git_command("git status --porcelain -b")
+    if "ahead" in ahead_check:
+        print("🔄 Local commits detected. Pushing to GitHub...")
+        run_git_command("git push origin main")
+        show_dialog("Sync Successful", "All changes have been committed and pushed.")
+    else:
+        print("✅ No unpushed commits. Skipping push.")
 
 # Step 1: Show a dialog that sync is starting
 show_dialog("Obsidian Sync", "Pulling latest changes from GitHub...")
