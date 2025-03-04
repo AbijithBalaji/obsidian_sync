@@ -1,89 +1,95 @@
 import os
 import subprocess
 import sys
-import time
+import tkinter as tk
+from tkinter import messagebox
 
-# Detect the OS
+# Detect OS
 IS_WINDOWS = sys.platform.startswith("win")
 
-# Set the vault path based on OS
+# Set paths
 if IS_WINDOWS:
     VAULT_PATH = r"C:\Users\abiji\Personal\Project\Sync Project\obsidian_sync"
-    OBSIDIAN_CMD = [r"C:\Users\abiji\AppData\Local\Programs\Obsidian\Obsidian.exe"]  # Update if needed
+    OBSIDIAN_CMD = [r"C:\Users\abiji\AppData\Local\Programs\Obsidian\Obsidian.exe"]
 else:
-    VAULT_PATH = "/home/Abijith_PI/obsidian_sync"
+    VAULT_PATH = "/home/pi/obsidian_sync"
     OBSIDIAN_CMD = ["flatpak", "run", "md.obsidian.Obsidian"]
 
-def run_git_command(command, suppress_output=False):
-    """Executes a git command in the specified vault directory."""
+def run_git_command(command):
+    """Executes a Git command in the specified vault directory."""
     result = subprocess.run(command, cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
-    if result.returncode != 0 and "nothing to commit" not in result.stderr:
-        print(f"Error: {result.stderr}")
-    elif not suppress_output:
-        print(result.stdout)
+    return result.stdout.strip(), result.stderr.strip()
+
+def show_dialog(title, message):
+    """Displays a messagebox dialog for user notifications."""
+    root = tk.Tk()
+    root.withdraw()
+    messagebox.showinfo(title, message)
+    root.destroy()
+
+def get_conflicted_files():
+    """Check for Git conflicts and return a list of files."""
+    result, _ = run_git_command("git diff --name-only --diff-filter=U")
+    return result.split("\n") if result else []
+
+def check_network():
+    """Check if the device has an active internet connection."""
+    result = subprocess.run("ping -c 1 google.com" if not IS_WINDOWS else "ping -n 1 google.com", shell=True, stdout=subprocess.PIPE)
+    return result.returncode == 0
 
 def commit_changes():
-    """Commits changes, pulls latest updates, and prevents conflicts."""
+    """Commits changes and pushes them unless a conflict is detected."""
     run_git_command("git add .")
 
-    # Check if there are actual changes before committing
-    commit_result = subprocess.run("git diff --cached --exit-code", cwd=VAULT_PATH, shell=True, capture_output=True)
-    if commit_result.returncode == 0:
+    # Check for changes before committing
+    commit_result, _ = run_git_command("git diff --cached --exit-code")
+    if not commit_result:
         print("No new changes detected.")
+        return
 
-        # NEW: Check for unpushed commits before returning
-        pending_commits = subprocess.run("git log origin/main..HEAD", cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
-        if pending_commits.stdout:
-            print("🔄 Detected unpushed commits! Retrying push...")
-            push_changes()
+    # Commit changes
+    run_git_command('git commit -m "Auto-sync: latest updates"')
+
+    # Check internet connection before pushing
+    if check_network():
+        pull_result, pull_error = run_git_command("git pull --rebase origin main")
+
+        if pull_error:
+            print("⚠️ Pull failed! Possible conflict detected.")
+            show_dialog("Sync Conflict Detected", "A conflict has been found. Resolve manually.")
+            return
+
+        # Push changes to GitHub
+        _, push_error = run_git_command("git push origin main")
+        if push_error:
+            show_dialog("Sync Error", "Error pushing changes. Check your internet or resolve conflicts.")
         else:
-            print("✅ No unpushed commits. Skipping push.")
-        return
-
-    # Commit the new changes
-    run_git_command('git commit -m "Auto-sync: latest updates"', suppress_output=True)
-
-    # Try pulling latest changes before pushing
-    print("🔄 Pulling latest changes before pushing...")
-    pull_result = subprocess.run("git pull --rebase origin main", cwd=VAULT_PATH, shell=True, capture_output=True, text=True)
-
-    if pull_result.returncode != 0:
-        print("⚠️ Pull failed! Possible conflict detected.")
-        print("🔧 Resolve manually by running:")
-        print(f"  cd {VAULT_PATH}")
-        print("  git status  # Check which files are in conflict")
-        print("  Fix the conflicts in the files")
-        print("  git add . && git rebase --continue")
-        print("  git push origin main")
-        return
-
-    # If pull is successful, push the changes
-    push_changes()
-
-def push_changes():
-    """Pushes committed changes to GitHub."""
-    print("Pushing changes to GitHub...")
-    push_result = subprocess.run("git push origin main", cwd=VAULT_PATH, shell=True, capture_output=True)
-
-    if push_result.returncode != 0:
-        print("⚠️ Push failed! Possible conflict detected. Resolve manually as instructed.")
+            show_dialog("Sync Successful", "All changes have been committed and pushed.")
     else:
-        print("✅ Changes pushed successfully.")
+        show_dialog("No Network", "No internet detected. Changes committed locally and will sync next time.")
 
+# Step 1: Show a dialog that sync is starting
+show_dialog("Obsidian Sync", "Pulling latest changes from GitHub...")
 
-# Step 1: Pull latest changes before opening Obsidian
-print("Pulling latest changes from GitHub...")
-run_git_command("git pull origin main")
+# Step 2: Pull latest changes before opening Obsidian
+pull_output, pull_error = run_git_command("git pull origin main")
 
-# Step 2: Open Obsidian and wait for it to close
+# Step 3: Display new files if pulled
+if pull_output:
+    show_dialog("New Updates", f"Downloaded new files:\n{pull_output}")
+
+# Step 4: Open Obsidian
 print("Opening Obsidian...")
 obsidian_process = subprocess.Popen(OBSIDIAN_CMD, shell=IS_WINDOWS)
 
-# Wait for Obsidian to close before proceeding
+# Wait for Obsidian to close
 obsidian_process.wait()
 print("Obsidian closed. Checking for changes...")
 
-# Step 3: Commit and push changes after closing Obsidian
+# Step 5: Show a dialog that sync is happening
+show_dialog("Syncing Changes", "Syncing your latest changes...")
+
+# Step 6: Commit and push changes
 commit_changes()
 
 print("Sync Completed!")
